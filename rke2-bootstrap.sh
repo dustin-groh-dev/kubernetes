@@ -43,10 +43,10 @@ read -p "What user would you like to use on the remote nodes? " node_user
 
 # Confirm input
 echo "You have entered the following details:"
-echo "  Server Node: $server_node (SSH Key: $server_ssh_key)"
 for ip in "${!nodes[@]}"; do
     echo "  Node IP: $ip (SSH Key: ${nodes[$ip]})"
 done
+echo "  and the Server Node is $server_node "
 echo " User: $node_user"
 
 read -p "Do you want to proceed? (yes/no): " confirm
@@ -59,48 +59,80 @@ fi
 read -p "Enter the token to use for the RKE2 setup: " TOKEN
 
 # Iterate over nodes and run commands
-for ip in "${!nodes[@]}"; do
 
-    #Do this for every node
-    ssh_key="${nodes[$ip]}"
-        
-    #create the config locally
-    echo "token: $TOKEN
+# Process the server node first
+server_key="${nodes[$server_node]}"
+echo "Processing server node: $server_node"
+
+# Create the config locally for the server node
+echo "token: $TOKEN
 tls-san: " > server_config.yaml
 
-    # if the node being connected to is not the server node, ad the server field to the config.
-    if [[ "$ip" != "$server_node" ]]; then
-        echo "server: https://$server_node:9345" >> server_config.yaml
-    fi
+# Copy the config to the server node
+scp -i "$server_key" server_config.yaml "$node_user"@"$server_node":/tmp/config.yaml
 
-    #copy the config to the remo te machine
-    scp -i "$ssh_key" server_config.yaml "$node_user"@"$ip":/tmp/config.yaml
-        
-    #ssh to host using IP entered above
-    ssh -i "$ssh_key" "$node_user"@"$ip" <<OUTER_EOF
+# SSH to the server node and run commands
+ssh -i "$server_key" "$node_user"@"$server_node" <<OUTER_EOF
+echo "Running commands on server node $server_node ..."
 
-    echo "Running commands on the node..."
+# Download RKE2 binary
+curl -sfL https://get.rke2.io | sudo INSTALL_RKE2_VERSION=$RKE2_VERSION sh -
 
-    # Download RKE2 binary
-    curl -sfL https://get.rke2.io | sudo INSTALL_RKE2_VERSION=$RKE2_VERSION sh -
+# Create RKE2 config directory and file
+sudo mkdir -p /etc/rancher/rke2
 
-    # Create RKE2 config directory and file
-    sudo mkdir -p /etc/rancher/rke2
+# Move and rename the config
+sudo mv /tmp/config.yaml /etc/rancher/rke2/config.yaml
 
-    # Move and rename the config
-    sudo mv /tmp/config.yaml /etc/rancher/rke2/config.yaml
-
-    # Enable and start RKE2 server
-    sudo systemctl enable rke2-server.service
-    sudo systemctl start rke2-server.service
+# Enable and start RKE2 server
+sudo systemctl enable rke2-server.service
+sudo systemctl start rke2-server.service
 
 OUTER_EOF
 
-    # remove config after it's been moved to remote machine
-    rm -f server_config.yaml
+# Remove the config file after it's been moved to the server node
+rm -f server_config.yaml
 
-# exit the for loop
+# Process the other nodes
+for ip in "${!nodes[@]}"; do
+    if [[ "$ip" == "$server_node" ]]; then
+        continue
+    fi
+
+    ssh_key="${nodes[$ip]}"
+    echo "Processing node: $ip"
+
+    # Create the config locally for other nodes
+    echo "token: $TOKEN
+tls-san: 
+server: https://$server_node:9345" > server_config.yaml
+
+    # Copy the config to the node
+    scp -i "$ssh_key" server_config.yaml "$node_user"@"$ip":/tmp/config.yaml
+
+    # SSH to the node and run commands
+    ssh -i "$ssh_key" "$node_user"@"$ip" <<OUTER_EOF
+echo "Running commands on node $ip ..."
+
+# Download RKE2 binary
+curl -sfL https://get.rke2.io | sudo INSTALL_RKE2_VERSION=$RKE2_VERSION sh -
+
+# Create RKE2 config directory and file
+sudo mkdir -p /etc/rancher/rke2
+
+# Move and rename the config
+sudo mv /tmp/config.yaml /etc/rancher/rke2/config.yaml
+
+# Enable and start RKE2 agent
+sudo systemctl enable rke2-agent.service
+sudo systemctl start rke2-agent.service
+
+OUTER_EOF
+
+    # Remove the config file after it's been moved to the node
+    rm -f server_config.yaml
 done
+
 
 echo " "
 echo "Configuration complete!"
