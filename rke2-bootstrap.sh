@@ -55,34 +55,23 @@ if [[ "$confirm" != "yes" ]]; then
     exit 0
 fi
 
-# Token to be used in the config.yaml
-read -p "Enter the token to use for the RKE2 setup: " TOKEN
-
 # Iterate over nodes and run commands
+
+
 
 # Process the server node first
 server_key="${nodes[$server_node]}"
-echo "Processing server node: $server_node"
 
-# Create the config locally for the server node
-echo "token: $TOKEN
-tls-san: " > server_config.yaml
+echo " "
+echo "Processing node: $server_node"
 
-# Copy the config to the server node
-scp -i "$server_key" server_config.yaml "$node_user"@"$server_node":/tmp/config.yaml
+echo " "
 
-# SSH to the server node and run commands
 ssh -i "$server_key" "$node_user"@"$server_node" <<OUTER_EOF
 echo "Running commands on server node $server_node ..."
 
 # Download RKE2 binary
 curl -sfL https://get.rke2.io | sudo INSTALL_RKE2_VERSION=$RKE2_VERSION sh -
-
-# Create RKE2 config directory and file
-sudo mkdir -p /etc/rancher/rke2
-
-# Move and rename the config
-sudo mv /tmp/config.yaml /etc/rancher/rke2/config.yaml
 
 # Enable and start RKE2 server
 sudo systemctl enable rke2-server.service
@@ -90,8 +79,20 @@ sudo systemctl start rke2-server.service
 
 OUTER_EOF
 
-# Remove the config file after it's been moved to the server node
-rm -f server_config.yaml
+# grab the token from the first server node
+TOKEN=$(ssh -T -o BatchMode=yes -i "$server_key" "$node_user@$server_node" "sudo cat /var/lib/rancher/rke2/server/node-token")
+
+
+# Check if the token was successfully fetched
+if [[ -z "$TOKEN" ]]; then
+    echo "Failed to fetch the node token. Exiting."
+    exit 1
+fi
+
+# Print the fetched token
+echo " "
+echo "Fetched node token: $TOKEN"
+
 
 # Process the other nodes
 for ip in "${!nodes[@]}"; do
@@ -100,12 +101,15 @@ for ip in "${!nodes[@]}"; do
     fi
 
     ssh_key="${nodes[$ip]}"
+
+    echo " "
     echo "Processing node: $ip"
+    echo " "
 
     # Create the config locally for other nodes
-    echo "token: $TOKEN
-tls-san: 
-server: https://$server_node:9345" > server_config.yaml
+    echo "server: https://$server_node:9345
+token: $TOKEN
+tls-san: " > server_config.yaml
 
     # Copy the config to the node
     scp -i "$ssh_key" server_config.yaml "$node_user"@"$ip":/tmp/config.yaml
@@ -113,6 +117,7 @@ server: https://$server_node:9345" > server_config.yaml
     # SSH to the node and run commands
     ssh -i "$ssh_key" "$node_user"@"$ip" <<OUTER_EOF
 echo "Running commands on node $ip ..."
+echo " "
 
 # Download RKE2 binary
 curl -sfL https://get.rke2.io | sudo INSTALL_RKE2_VERSION=$RKE2_VERSION sh -
@@ -123,9 +128,12 @@ sudo mkdir -p /etc/rancher/rke2
 # Move and rename the config
 sudo mv /tmp/config.yaml /etc/rancher/rke2/config.yaml
 
+echo "RKE2 config placed on node, continuing... "
+echo " "
+
 # Enable and start RKE2 agent
-sudo systemctl enable rke2-agent.service
-sudo systemctl start rke2-agent.service
+sudo systemctl enable rke2-server.service
+sudo systemctl start rke2-server.service
 
 OUTER_EOF
 
@@ -154,8 +162,36 @@ mv /tmp/kube_config.yaml ~/.kube/config.yaml
 # set kubeconfig context
 export KUBECONFIG=~/.kube/config.yaml
 
-echo "Running test kubectl command... "
-echo " "
+# Function to check the readiness of all nodes
+check_nodes_ready() {
+    # Get the node statuses
+    NODE_STATUSES=$(kubectl get nodes --no-headers | awk '{print $2}')
+    
+    # Loop through statuses to check if any node is not "Ready"
+    for status in $NODE_STATUSES; do
+        if [[ "$status" != "Ready" ]]; then
+            return 1 # At least one node is not ready
+        fi
+    done
 
-# test kubectl command
-kubectl get nodes
+    return 0 # All nodes are ready
+}
+
+# Loop until all nodes are ready
+echo "Checking node readiness..."
+echo " "
+while true; do
+    if check_nodes_ready; then
+        echo " "
+        echo "All nodes are in the Ready state!"
+        echo " "
+        
+        # test kubectl command
+        kubectl get nodes
+
+        break
+    else
+        echo "Not all nodes are Ready. Retrying in 10 seconds..."
+        sleep 10
+    fi
+done
