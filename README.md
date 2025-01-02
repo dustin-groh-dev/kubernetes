@@ -23,7 +23,12 @@ At a high level all this script is doing is using ```ssh``` to connect to pre-ex
 2. Set your desired RKE2 version in the script variable **RKE2_VERSION** <br>
 3. Make it executable ```chmod +x rke-boostrap.sh```
 4. Run it ```. rke2_bootstrap.sh``` <br>
-5. Follow the script prompts to input node IPs and SSH key paths, then let the script run.
+5. Follow the script prompts to input node IPs and SSH key paths, then let the script run. When complete it should look like the below screenshot.
+
+
+
+![Screenshot of completed script](https://i.imgur.com/ShXF3Vb.png))
+
 
 
 Server node docs: <br>
