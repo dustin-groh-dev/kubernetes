@@ -19,7 +19,7 @@ At a high level all this script is doing is using ```ssh``` to connect to pre-ex
 
 ## How to Use
 
-1. Download the script. ```wget https://raw.githubusercontent.com/dustin-groh-dev/suse1/refs/heads/main/rke2-bootstrap.sh```<br>
+1. Download the script. ```wget https://raw.githubusercontent.com/dustin-groh-dev/kubernetes/refs/heads/main/rke2-bootstrap/rke2-bootstrap.sh```<br>
 2. Set your desired RKE2 version in the script variable **RKE2_VERSION** <br>
 3. Make it executable ```chmod +x rke-boostrap.sh```
 4. Run it ```. rke2_bootstrap.sh``` <br>
