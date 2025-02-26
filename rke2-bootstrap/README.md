@@ -21,7 +21,7 @@ At a high level all this script is doing is using ```ssh``` to connect to pre-ex
 
 1. Download the script. ```wget https://raw.githubusercontent.com/dustin-groh-dev/kubernetes/refs/heads/main/rke2-bootstrap/rke2-bootstrap.sh```<br>
 2. Set your desired RKE2 version in the script variable **RKE2_VERSION** <br>
-3. Make it executable ```chmod +x rke-boostrap.sh```
+3. Make it executable ```chmod +x rke2-bootstrap.sh```
 4. Run it ```. rke2_bootstrap.sh``` <br>
 5. Follow the script prompts to input node IPs and SSH key paths, then let the script run. When complete it should look like the below screenshot.
 
